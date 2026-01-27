@@ -4,7 +4,7 @@ AI SLA Monitoring Agent with Database Integration
 Test agent for context building, reasoning, and escalation
 """
 
-import pymysql
+import PyMySQL
 import json
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
