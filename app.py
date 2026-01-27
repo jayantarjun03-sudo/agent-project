@@ -1,3 +1,15 @@
+import sys
+import streamlit as st
+
+class StreamlitLogger:
+    def write(self, text):
+        st.text(text)
+
+    def flush(self):
+        pass
+
+sys.stdout = StreamlitLogger()
+
 import streamlit as st
 from sla_agent import AI_SLA_Agent
 
