@@ -185,4 +185,168 @@ class SLAReasoningEngine:
         return False
     
     def _recommend_actions(self, ticket: Dict, severity_score: int, insights: List[str]) -> List[str]:
-       
+        """Generate recommended actions based on severity and insights"""
+        actions = []
+        
+        if severity_score >= 8:
+            actions.extend([
+                "🚨 IMMEDIATE: Escalate to director level",
+                "📞 Contact customer personally with update",
+                "🔄 Assign senior resources immediately",
+                "⏰ Schedule emergency bridge call within 1 hour",
+                "📋 Document all actions for post-mortem"
+            ])
+        elif severity_score >= 6:
+            actions.extend([
+                "⚠️ URGENT: Notify manager with detailed report",
+                "📋 Review with team lead within 2 hours",
+                "🔍 Conduct root cause analysis",
+                "📝 Update customer with clear timeline",
+                "🔄 Consider resource reallocation"
+            ])
+        elif severity_score >= 4:
+            actions.extend([
+                "🔶 MONITOR: Notify team lead",
+                "📊 Review ticket details and dependencies",
+                "⏰ Set reminder for follow-up in 4 hours",
+                "📝 Document potential solutions",
+                "👥 Check team availability"
+            ])
+        else:
+            actions.extend([
+                "✅ NORMAL: Continue standard monitoring",
+                "📋 Update ticket regularly",
+                "⏰ Follow standard SLA procedures",
+                "📊 Track progress against SLA"
+            ])
+        
+        # Add insight-specific actions
+        for insight in insights:
+            if "TEAM CAPACITY" in insight:
+                actions.append("👥 **ACTION**: Review team workload and redistribute if needed")
+            elif "RECURRING PATTERN" in insight:
+                actions.append("📊 **ACTION**: Schedule root cause analysis meeting")
+            elif "PEAK HOUR" in insight:
+                actions.append("⏰ **ACTION**: Adjust expectations for resolution time")
+        
+        return actions[:5]  # Return top 5 actions
+    
+    def _determine_escalation_level(self, severity_score: int) -> int:
+        """Determine appropriate escalation level"""
+        if severity_score >= 9:
+            return 3  # Director level
+        elif severity_score >= 7:
+            return 2  # Manager level
+        elif severity_score >= 5:
+            return 1  # Team lead level
+        else:
+            return 0  # No escalation
+    
+    def _get_risk_level(self, severity_score: int) -> str:
+        """Get risk level description"""
+        if severity_score >= 8:
+            return "Critical"
+        elif severity_score >= 6:
+            return "High"
+        elif severity_score >= 4:
+            return "Medium"
+        else:
+            return "Low"
+    
+    def analyze_batch(self, tickets: List[Dict], context: Optional[Dict] = None) -> Dict:
+        """Analyze a batch of tickets and provide aggregated insights"""
+        logger.info(f"Analyzing batch of {len(tickets)} tickets")
+        
+        analyses = []
+        for ticket in tickets:
+            analysis = self.analyze_ticket(ticket, context)
+            analyses.append(analysis)
+        
+        # Calculate aggregated metrics
+        total_tickets = len(analyses)
+        critical_tickets = sum(1 for a in analyses if a['severity_score'] >= 8)
+        high_risk_tickets = sum(1 for a in analyses if a['severity_score'] >= 6)
+        escalations_needed = sum(1 for a in analyses if a['needs_escalation'])
+        
+        # Find top issues
+        top_issues = sorted(analyses, key=lambda x: x['severity_score'], reverse=True)[:5]
+        
+        # Generate batch insights
+        batch_insights = self._generate_batch_insights(analyses)
+        
+        return {
+            'total_tickets_analyzed': total_tickets,
+            'critical_tickets': critical_tickets,
+            'high_risk_tickets': high_risk_tickets,
+            'escalations_needed': escalations_needed,
+            'avg_severity_score': sum(a['severity_score'] for a in analyses) / total_tickets if total_tickets > 0 else 0,
+            'top_issues': top_issues,
+            'batch_insights': batch_insights,
+            'analyses': analyses
+        }
+    
+    def _generate_batch_insights(self, analyses: List[Dict]) -> List[str]:
+        """Generate insights from batch analysis"""
+        insights = []
+        
+        # Calculate statistics
+        severity_scores = [a['severity_score'] for a in analyses]
+        avg_severity = sum(severity_scores) / len(severity_scores) if severity_scores else 0
+        
+        # Service distribution
+        services = {}
+        for analysis in analyses:
+            service = analysis.get('ticket_title', 'Unknown').split('-')[-1].strip()
+            services[service] = services.get(service, 0) + 1
+        
+        # Generate insights
+        if avg_severity >= 7:
+            insights.append("🚨 **CRITICAL BATCH**: High average severity detected. Immediate review required.")
+        elif avg_severity >= 5:
+            insights.append("⚠️ **ELEVATED RISK**: Above-average severity across multiple tickets.")
+        
+        # Service-specific insights
+        if services:
+            top_service = max(services.items(), key=lambda x: x[1])
+            if top_service[1] > len(analyses) * 0.3:  # More than 30% of tickets
+                insights.append(f"🎯 **SERVICE FOCUS**: {top_service[0]} accounts for {top_service[1]} tickets")
+        
+        # Escalation insights
+        escalations = sum(1 for a in analyses if a['needs_escalation'])
+        if escalations > 3:
+            insights.append(f"📤 **ESCALATION VOLUME**: {escalations} tickets require escalation")
+        
+        # Time-based insights
+        current_hour = datetime.now().hour
+        if current_hour in [16, 17, 18]:  # Late afternoon
+            insights.append("🌅 **END OF DAY**: Consider prioritizing for next day resolution")
+        
+        return insights
+    
+    def learn_from_history(self):
+        """Learn patterns from analysis history"""
+        if not self.history:
+            return
+        
+        # Simple pattern learning (can be enhanced with ML)
+        service_patterns = {}
+        
+        for analysis in self.history:
+            service = analysis.get('ticket_title', 'Unknown').split('-')[-1].strip()
+            severity = analysis['severity_score']
+            
+            if service not in service_patterns:
+                service_patterns[service] = {'count': 0, 'total_severity': 0}
+            
+            service_patterns[service]['count'] += 1
+            service_patterns[service]['total_severity'] += severity
+        
+        # Update patterns
+        for service, stats in service_patterns.items():
+            avg_severity = stats['total_severity'] / stats['count']
+            self.patterns[service] = {
+                'avg_severity': avg_severity,
+                'recurring': stats['count'] > 3 and avg_severity > 5
+            }
+        
+        logger.info(f"Learned patterns for {len(service_patterns)} services")
